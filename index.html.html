@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>倉位計算器 Pro (邏輯防錯版)</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0b0c0f; --surface: #13151a; --surface2: #1c1f27;
+    --border: rgba(255,255,255,0.07); --border-hover: rgba(255,255,255,0.14);
+    --accent: #c8ff00; --accent-dim: rgba(200,255,0,0.1);
+    --red: #ff4545; --red-dim: rgba(255,69,69,0.1);
+    --green: #4cff91; --text: #f0f0ee; --muted: #6b6f7a;
+    --font-display: 'Syne', sans-serif; --font-mono: 'JetBrains Mono', monospace;
+  }
+  body {
+    min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--font-mono);
+    display: flex; flex-direction: column; align-items: center; padding: 48px 20px;
+    background-image: radial-gradient(ellipse 60% 40% at 80% 0%, rgba(200,255,0,0.04) 0%, transparent 60%);
+  }
+
+  .card { width: 100%; max-width: 700px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+  h1 { font-family: var(--font-display); font-size: 36px; font-weight: 800; margin-bottom: 20px; text-align: left; }
+  h1 span { color: var(--accent); }
+
+  .coin-search-wrap input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text); font-family: var(--font-mono); outline: none; margin-bottom: 10px; }
+  .coin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; max-height: 150px; overflow-y: auto; margin-bottom: 20px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 10px; }
+  .coin-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; cursor: pointer; text-align: center; font-size: 12px; transition: 0.2s; }
+  .coin-card.selected { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+
+  .price-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 24px; }
+  .price-box { background: var(--surface2); padding: 12px; border-radius: 12px; border: 1px solid var(--border); }
+  .price-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; display: block; }
+  .price-value { font-size: 18px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+  .fill-btn { width: 100%; padding: 6px; font-size: 10px; background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); border-radius: 4px; cursor: pointer; font-weight: bold; }
+
+  .dir-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 24px; }
+  .dir-btn { padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font-weight: bold; }
+  .dir-btn.long-active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .dir-btn.short-active { background: var(--red-dim); border-color: var(--red); color: var(--red); }
+
+  .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+  .field label { font-size: 11px; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; display: block; }
+  
+  .input-wrap { position: relative; display: flex; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; transition: 0.3s; }
+  .input-wrap:focus-within { border-color: var(--accent); }
+  
+  /* 錯誤狀態樣式 */
+  .input-wrap.error { border-color: var(--red); background: var(--red-dim); }
+  .error-icon { display: none; color: var(--red); font-weight: bold; margin-right: 8px; font-size: 14px; }
+  .input-wrap.error .error-icon { display: block; }
+
+  .input-wrap input { flex: 1; background: transparent; border: none; padding: 10px; color: var(--text); font-family: var(--font-mono); outline: none; width: 100%; -webkit-appearance: none; margin: 0; }
+  .input-wrap input::-webkit-outer-spin-button, .input-wrap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .input-unit { font-size: 10px; color: var(--muted); margin-right: 8px; pointer-events: none; }
+
+  .spin-controls { display: flex; flex-direction: column; border-left: 1px solid var(--border); }
+  .spin-btn { background: transparent; border: none; color: var(--muted); width: 24px; height: 19px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+  .spin-btn:hover { color: var(--accent); background: rgba(255,255,255,0.05); }
+
+  .calc-btn { width: 100%; padding: 16px; background: var(--accent); border: none; border-radius: 10px; color: #0b0c0f; font-weight: 800; cursor: pointer; margin-top: 10px; font-size: 15px; transition: 0.3s; }
+  .calc-btn:disabled { background: var(--muted); cursor: not-allowed; opacity: 0.5; }
+
+  .results { margin-top: 28px; display: none; }
+  .res-main { background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 14px; padding: 30px 10px; text-align: center; margin-bottom: 12px; overflow: hidden; }
+  .res-val { font-family: var(--font-mono); font-size: clamp(32px, 8vw, 48px); font-weight: 800; color: var(--accent); line-height: 1; letter-spacing: -2px; display: inline-block; transform: scaleY(1.1); white-space: nowrap; }
+  
+  .unit-switch { display: flex; justify-content: flex-end; gap: 5px; margin-bottom: 8px; }
+  .u-btn { padding: 4px 8px; font-size: 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; }
+  .u-btn.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: bold; }
+  .secondary-res { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 15px; border-radius: 12px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>倉位<span>助手</span></h1>
+
+  <div class="coin-search-wrap">
+    <input type="text" id="coin-search" placeholder="搜尋幣安幣種 (如: BTC, PEPE)..." oninput="searchCoins(this.value)">
+  </div>
+  <div class="coin-grid" id="coin-grid"></div>
+
+  <div id="selected-symbol" style="font-size:12px; color:var(--accent); margin-bottom:8px; font-weight:bold;">請選擇幣種</div>
+  <div class="price-container">
+    <div class="price-box">
+      <span class="price-label">現貨價格 (Spot)</span>
+      <div class="price-value" id="spot-price">$ 0.00</div>
+      <button class="fill-btn" onclick="usePrice('spot')">填入開倉</button>
+    </div>
+    <div class="price-box">
+      <span class="price-label">合約價格 (Futures)</span>
+      <div class="price-value" id="futures-price">$ 0.00</div>
+      <button class="fill-btn" onclick="usePrice('futures')">填入開倉</button>
+    </div>
+  </div>
+
+  <div class="dir-toggle">
+    <button class="dir-btn long-active" id="btn-long" onclick="setDir('long')">做多 LONG</button>
+    <button class="dir-btn" id="btn-short" onclick="setDir('short')">做空 SHORT</button>
+  </div>
+
+  <div class="input-grid">
+    <div class="field"><label>開倉價格</label>
+      <div class="input-wrap" id="wrap-entry">
+        <input type="number" id="entry" step="any" oninput="validateLogic()">
+        <span class="input-unit">USD</span>
+        <div class="spin-controls">
+          <button class="spin-btn" onclick="stepUp('entry')">▲</button>
+          <button class="spin-btn" onclick="stepDown('entry')">▼</button>
+        </div>
+      </div>
+    </div>
+    <div class="field"><label>止損價格</label>
+      <div class="input-wrap" id="wrap-sl">
+        <span class="error-icon">✕</span>
+        <input type="number" id="sl" step="any" oninput="validateLogic()">
+        <span class="input-unit">USD</span>
+        <div class="spin-controls">
+          <button class="spin-btn" onclick="stepUp('sl')">▲</button>
+          <button class="spin-btn" onclick="stepDown('sl')">▼</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-grid">
+    <div class="field"><label>總本金</label>
+      <div class="input-wrap">
+        <input type="number" id="capital" value="1000">
+        <span class="input-unit">USD</span>
+        <div class="spin-controls">
+          <button class="spin-btn" onclick="stepUp('capital', 100)">▲</button>
+          <button class="spin-btn" onclick="stepDown('capital', 100)">▼</button>
+        </div>
+      </div>
+    </div>
+    <div class="field"><label>風險 %</label>
+      <div class="input-wrap">
+        <input type="number" id="risk" value="1">
+        <span class="input-unit">%</span>
+        <div class="spin-controls">
+          <button class="spin-btn" onclick="stepUp('risk', 0.5)">▲</button>
+          <button class="spin-btn" onclick="stepDown('risk', 0.5)">▼</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="field" style="margin-bottom: 20px;">
+    <label>期望盈虧比 (R:R)</label>
+    <div class="input-wrap">
+      <input type="number" id="rr-ratio" value="1.5" step="0.1">
+      <div class="spin-controls">
+        <button class="spin-btn" onclick="stepUp('rr-ratio', 0.1)">▲</button>
+        <button class="spin-btn" onclick="stepDown('rr-ratio', 0.1)">▼</button>
+      </div>
+    </div>
+  </div>
+
+  <button class="calc-btn" id="main-calc-btn" onclick="calculate()">計算建議倉位</button>
+
+  <div class="results" id="results">
+    <div class="unit-switch">
+      <button class="u-btn active" id="u-usdt" onclick="switchUnit('USDT')">USDT</button>
+      <button class="u-btn" id="u-qty" onclick="switchUnit('QTY')">顆數</button>
+    </div>
+    <div class="res-main">
+      <p style="font-size:11px; color:var(--muted); margin-bottom:15px; text-transform:uppercase; letter-spacing:1px;">建議倉位大小</p>
+      <p class="res-val" id="r-position">$0.00</p>
+      <p id="r-details" style="font-size:12px; color:var(--muted); margin-top:15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top:10px;"></p>
+    </div>
+    <div class="input-grid">
+      <div class="secondary-res">
+        <p style="font-size:10px; color:var(--muted); margin-bottom:4px;">止盈價格</p>
+        <p id="r-tp" style="font-size:18px; font-weight:700; color:var(--green)">$0.00</p>
+      </div>
+      <div class="secondary-res">
+        <p style="font-size:10px; color:var(--muted); margin-bottom:4px;">預計獲利</p>
+        <p id="r-profit" style="font-size:18px; font-weight:700; color:var(--green)">$0.00</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let allPairs = [], direction = 'long', currentSymbol = '', currentUnit = 'USDT', lastRes = {u:0, q:0};
+let prices = { spot: 0, futures: 0 };
+
+function validateLogic() {
+  const ent = parseFloat(document.getElementById('entry').value);
+  const sl = parseFloat(document.getElementById('sl').value);
+  const wrapSl = document.getElementById('wrap-sl');
+  const btn = document.getElementById('main-calc-btn');
+  
+  let isError = false;
+  if (!isNaN(ent) && !isNaN(sl)) {
+    if (direction === 'long' && sl >= ent) isError = true;
+    if (direction === 'short' && sl <= ent) isError = true;
+  }
+
+  if (isError) {
+    wrapSl.classList.add('error');
+    btn.disabled = true;
+    btn.textContent = "價格邏輯錯誤";
+  } else {
+    wrapSl.classList.remove('error');
+    btn.disabled = false;
+    btn.textContent = "計算建議倉位";
+  }
+}
+
+function stepUp(id, val = 1) { 
+  const el = document.getElementById(id);
+  el.value = (parseFloat(el.value || 0) + val).toFixed(id==='risk'||id==='rr-ratio'? 1 : 4);
+  validateLogic();
+}
+function stepDown(id, val = 1) { 
+  const el = document.getElementById(id);
+  el.value = Math.max(0, (parseFloat(el.value || 0) - val).toFixed(id==='risk'||id==='rr-ratio'? 1 : 4));
+  validateLogic();
+}
+
+async function init() {
+  try {
+    const res = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+    const data = await res.json();
+    allPairs = data.symbols.filter(s => s.quoteAsset === 'USDT' && s.status === 'TRADING').map(s => s.baseAsset);
+    searchCoins('');
+  } catch(e) { console.error("API 載入失敗"); }
+}
+
+function searchCoins(q) {
+  const grid = document.getElementById('coin-grid');
+  grid.innerHTML = '';
+  allPairs.filter(p => p.includes(q.toUpperCase())).slice(0, 30).forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'coin-card' + (p === currentSymbol ? ' selected' : '');
+    div.textContent = p;
+    div.onclick = () => updatePrices(p);
+    grid.appendChild(div);
+  });
+}
+
+async function updatePrices(p) {
+  currentSymbol = p;
+  document.getElementById('selected-symbol').textContent = `${p} / USDT`;
+  document.querySelectorAll('.coin-card').forEach(c => c.classList.toggle('selected', c.textContent === p));
+  try {
+    const [spotRes, futuresRes] = await Promise.all([
+      fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${p}USDT`),
+      fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${p}USDT`)
+    ]);
+    const spotData = await spotRes.json();
+    const futuresData = await futuresRes.json();
+    prices.spot = parseFloat(spotData.price);
+    prices.futures = futuresData.price ? parseFloat(futuresData.price) : 0;
+    const fmt = (v) => v ? '$' + v.toLocaleString(undefined, {minimumFractionDigits: v < 1 ? 6 : 2}) : '無合約';
+    document.getElementById('spot-price').textContent = fmt(prices.spot);
+    document.getElementById('futures-price').textContent = fmt(prices.futures);
+  } catch(e) { console.error("價格抓取失敗"); }
+}
+
+function usePrice(type) {
+  const val = prices[type];
+  if(val) {
+    document.getElementById('entry').value = val;
+    validateLogic();
+  }
+}
+
+function setDir(d) {
+  direction = d;
+  document.getElementById('btn-long').className = 'dir-btn' + (d==='long'?' long-active':'');
+  document.getElementById('btn-short').className = 'dir-btn' + (d==='short'?' short-active':'');
+  validateLogic();
+}
+
+function switchUnit(u) {
+  currentUnit = u;
+  document.getElementById('u-usdt').classList.toggle('active', u==='USDT');
+  document.getElementById('u-qty').classList.toggle('active', u==='QTY');
+  const el = document.getElementById('r-position');
+  if(u==='USDT') {
+    el.textContent = '$' + lastRes.u.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits:2});
+  } else {
+    el.textContent = lastRes.q.toLocaleString(undefined, {maximumFractionDigits: lastRes.q < 1 ? 4 : 2}) + ' ' + (currentSymbol || 'QTY');
+  }
+}
+
+function calculate() {
+  const ent = parseFloat(document.getElementById('entry').value), sl = parseFloat(document.getElementById('sl').value);
+  const cap = parseFloat(document.getElementById('capital').value), risk = parseFloat(document.getElementById('risk').value);
+  const rr = parseFloat(document.getElementById('rr-ratio').value);
+  if(!ent || !sl || isNaN(ent) || isNaN(sl)) return;
+
+  const riskAmt = cap * (risk/100);
+  const dist = Math.abs(ent - sl);
+  const slPct = dist / ent;
+  lastRes.u = riskAmt / slPct;
+  lastRes.q = lastRes.u / ent;
+  const tp = direction === 'long' ? ent + (dist * rr) : ent - (dist * rr);
+  document.getElementById('r-tp').textContent = '$' + tp.toLocaleString(undefined, {maximumFractionDigits: tp<1?6:2});
+  document.getElementById('r-profit').textContent = '$' + (riskAmt * rr).toLocaleString();
+  document.getElementById('r-details').textContent = `風險金額: $${riskAmt.toLocaleString()} | 止損幅度: ${(slPct*100).toFixed(2)}%`;
+  switchUnit(currentUnit);
+  document.getElementById('results').style.display = 'block';
+}
+
+init();
+</script>
+</body>
+</html>
